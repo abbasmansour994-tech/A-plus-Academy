@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>A Plus Academy</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#f6f7fb;--card:#fff;--tx:#1b1f2a;--mu:#6b7280;--pr:#4f46e5;--ok:#15803d;--bad:#b91c1c;--wa:#b45309;--bd:#e5e7eb}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12141a;--card:#1c1f28;--tx:#eceef4;--mu:#9aa0b0;--pr:#818cf8;--ok:#4ade80;--bad:#f87171;--wa:#fbbf24;--bd:#2c303c;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#12141a;--card:#1c1f28;--tx:#eceef4;--mu:#9aa0b0;--pr:#818cf8;--ok:#4ade80;--bad:#f87171;--wa:#fbbf24;--bd:#2c303c;color-scheme:dark}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;font-size:16px}
+.w{max-width:760px;margin:0 auto;padding:14px}
+h1{font-size:20px;margin:6px 0 10px}h2{font-size:17px;margin:18px 0 8px}
+.tabs{display:flex;gap:6px;margin-bottom:12px;overflow-x:auto}
+.tabs button{flex:1;background:var(--card);color:var(--tx);border:1px solid var(--bd);white-space:nowrap}
+.tabs button.on{background:var(--pr);color:#fff;border-color:var(--pr)}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin-bottom:10px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+.stat{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:10px;text-align:center}
+.stat b{display:block;font-size:18px}.stat span{font-size:12px;color:var(--mu)}
+input,select{width:100%;padding:10px;border:1px solid var(--bd);border-radius:10px;background:var(--bg);color:var(--tx);font:inherit;margin-bottom:8px}
+button{font:inherit;border:0;border-radius:10px;padding:10px 14px;background:var(--pr);color:#fff;cursor:pointer}
+button.g{background:transparent;color:var(--pr);border:1px solid var(--bd)}button.d{background:transparent;color:var(--bad);padding:4px 8px}
+.row{display:flex;gap:8px;align-items:center;justify-content:space-between}
+.s{cursor:pointer}.mu{color:var(--mu);font-size:13px}.ok{color:var(--ok)}.bad{color:var(--bad)}.wa{color:var(--wa)}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.t{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:6px;border-bottom:1px solid var(--bd);text-align:left}
+.note{background:var(--card);border:1px solid var(--bad);border-radius:10px;padding:8px;font-size:13px;margin-bottom:10px}
+</style>
+</head>
+<body>
+<div class="w" id="app"></div>
+<script>
+const $=s=>document.querySelector(s);
+function toast(m){let t=$("#toast");if(!t){t=document.createElement("div");t.id="toast";t.style.cssText="position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--tx);color:var(--bg);padding:10px 16px;border-radius:10px;z-index:99;font-size:14px;max-width:90%";document.body.appendChild(t)}t.textContent=m;t.style.display="block";clearTimeout(t._h);t._h=setTimeout(()=>t.style.display="none",2500)}
+window.alert=toast;
+let armed=null,bf=null,bm="",ss="grade",sf="",ed=null,pe=null,ts="name",tfl="";
+function sure(k){if(armed===k){armed=null;return true}armed=k;toast("Tap again to confirm delete");setTimeout(()=>{armed=null},3000);return false}
+const D={students:[],teachers:[],expenses:[],categories:[],bills:[],attendance:[]};
+let tab="students",cur=null,q="",gf="",db=null,offline=false;
+const today=()=>new Date().toISOString().slice(0,10);
+const mon=()=>today().slice(0,7);
+const sum=(a,k,f)=>(a||[]).filter(f||(()=>1)).reduce((t,x)=>t+(+x[k]||0),0);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmt=n=>{n=+n||0;return (n<0?"-":"")+"$"+Math.abs(n).toLocaleString("en")};
+const paidOf=s=>sum(s.payments,"amount");
+const addM=(d,n)=>{const [y,m,dd]=d.split("-").map(Number);const t=new Date(Date.UTC(y,m-1+n,1));const last=new Date(Date.UTC(t.getUTCFullYear(),t.getUTCMonth()+1,0)).getUTCDate();t.setUTCDate(Math.min(dd,last));return t.toISOString().slice(0,10)};
+const kOf=s=>Math.floor(paidOf(s)/(+s.fee));
+const partialOf=s=>Math.round((paidOf(s)-kOf(s)*(+s.fee))*100)/100;
+const nextDue=s=>s.startDate&&+s.fee>0?addM(s.startDate,kOf(s)+1):null;
+const isOpen=s=>s.startDate&&+s.fee>0&&today()>=addM(s.startDate,kOf(s));
+const daysTo=s=>isOpen(s)?Math.round((Date.parse(nextDue(s))-Date.parse(today()))/864e5):null;
+const status=s=>{if(!(s.startDate&&+s.fee>0))return["No fee set","mu"];if(today()<s.startDate)return["Starts "+s.startDate,"mu"];const d=daysTo(s);if(d===null)return["Paid until "+addM(s.startDate,kOf(s)),"ok"];const pl=partialOf(s),lf=pl>0?" \u00b7 "+fmt((+s.fee)-pl)+" left":"";if(d<0)return["Overdue "+(-d)+"d"+lf,"bad"];if(d===0)return["Due today"+lf,"wa"];if(d<=3)return["Due in "+d+"d"+lf,"wa"];return pl>0?["Partial"+lf,"wa"]:["Pending \u00b7 pay by "+nextDue(s),"mu"]};
+const dueBanner=()=>{const n=D.bills.filter(b=>/^(Overdue|Due today)/.test(bStatus(b).t)).length+D.students.filter(s=>daysTo(s)!==null&&daysTo(s)<=0).length+D.teachers.filter(t=>/^(Overdue|Due today)/.test(tStatus(t)[0])).length;return n&&tab!=="overview"&&tab!=="students"?`<div class="note" style="border-color:var(--wa);cursor:pointer" onclick="go('overview')">🔔 ${n} payment(s) due or overdue — tap to see</div>`:""};
+const GR=Array.from({length:12},(_,i)=>i+1);
+
+async function init(){
+  try{db=await claude.use("db")}catch(e){db=null}
+  if(db){
+    const t=setTimeout(()=>{offline=true;render()},10000);
+    Object.keys(D).forEach(k=>db.collection(k).onSnapshot(s=>{clearTimeout(t);D[k]=s.docs.map(d=>({id:d.id,...d.data()}));render()},()=>{clearTimeout(t);offline=true;render()}));
+  }else{
+    offline=true;
+    try{Object.assign(D,JSON.parse(localStorage.getItem("aplus2")||"{}"))}catch(e){}
+  }
+  render();
+}
+async function save(k,o){
+  const {id,...data}=o;
+  if(db&&!offline){try{await db.collection(k).doc(id).set(data)}catch(e){alert("Could not save (you may not have edit permission).")}}
+  else{const i=D[k].findIndex(x=>x.id===id);i<0?D[k].push(o):D[k][i]=o;try{localStorage.setItem("aplus2",JSON.stringify(D))}catch(e){}render()}
+}
+async function remove(k,id){
+  if(!sure("r"+id))return;
+  if(db&&!offline){try{await db.collection(k).doc(id).delete()}catch(e){alert("Could not delete.")}}
+  else{D[k]=D[k].filter(x=>x.id!==id);try{localStorage.setItem("aplus2",JSON.stringify(D))}catch(e){}}
+  cur=null;render();
+}
+const uid=()=>"i"+Date.now().toString(36);
+function go(t){tab=t;cur=null;q="";render();scrollTo(0,0)}
+
+function render(){
+  const tabs=[["students","Students"],["teachers","Teachers"],["attendance","Attendance"],["payments","Payments"],["exams","Exams"],["expenses","Expenses"],["overview","Overview"]];
+  $("#app").innerHTML=dueBanner()+(offline?'<div class="note">⚠️ Shared saving is unavailable. Data is saved on this device only.</div>':"")+
+  `<h1>🎓 A Plus Academy</h1><div class="tabs">${tabs.map(([k,l])=>`<button class="${tab===k?'on':''}" onclick="go('${k}')">${l}</button>`).join("")}</div>`+
+  `<div id="main">${{students:students,teachers:teachers,attendance:attendance,payments:payPage,exams:examsPage,expenses:expenses,overview:overview}[tab]()}</div>`;
+}
+
+/* ---------- Students ---------- */
+function students(){
+  const s=D.students.find(x=>x.id===cur);if(s)return studentFile(s);
+  const all=D.students,od=all.filter(s=>daysTo(s)!==null&&daysTo(s)<0).length,ds=all.filter(s=>daysTo(s)!==null&&daysTo(s)>=0&&daysTo(s)<=3).length;
+  return `<div class="stats" style="grid-template-columns:1fr"><div class="stat"><b>${all.length}</b><span>Students</span></div>
+  
+  </div>
+  <input placeholder="Search name or phone" value="${esc(q)}" oninput="q=this.value;$('#list').innerHTML=sList()">
+  <select onchange="setSort(this.value)"><option value="grade" ${ss==='grade'?'selected':''}>Sort: By grade (1 → 12)</option><option value="name" ${ss==='name'?'selected':''}>Sort: A → Z</option>${GR.map(g=>`<option value="g${g}" ${ss==='g'+g?'selected':''}>Only Grade ${g}</option>`).join("")}</select>
+  <button onclick="sForm()" style="width:100%;margin-bottom:10px">+ New student</button><div id="form"></div><div id="list">${sList()}</div>`;
+}
+function setSort(v){ss=v;gf=/^g\d+$/.test(v)?v.slice(1):"";$('#list').innerHTML=sList()}
+const sSort=(a,b)=>{const nm=(a.name||"").localeCompare(b.name||""),g=(+a.grade||0)-(+b.grade||0),u=(status(b)[1]==="ok"?0:1)-(status(a)[1]==="ok"?0:1);return ss==="name"?nm:ss==="unpaid"?(u||g||nm):ss==="paid"?(-u||g||nm):(g||nm)};
+function sList(){
+  const l=D.students.filter(s=>((s.name||"")+(s.phone||"")).toLowerCase().includes(q.toLowerCase())&&(!gf||s.grade==gf)&&(!sf||(sf==="paid")===(status(s)[1]==="ok")))
+    .sort(sSort);
+  if(!l.length)return '<p class="mu" style="text-align:center">No students yet</p>';
+  return l.map(s=>{const [t,c]=status(s);return `<div class="card s" onclick="cur='${s.id}';render();scrollTo(0,0)"><div class="row"><b>${esc(s.name)}</b><span class="mu">Grade ${esc(s.grade)}</span></div>
+  </div>`}).join("");
+}
+function sForm(){
+  $("#form").innerHTML=`<div class="card"><input id="n" placeholder="Student name"><input id="ph" placeholder="Phone" inputmode="tel">
+  <div class="g2"><select id="gr">${GR.map(g=>`<option value="${g}">Grade ${g}</option>`).join("")}</select><input id="f" type="number" inputmode="decimal" placeholder="Monthly fee ($)"></div>
+  <div class="mu">Start date</div><input id="d" type="date" value="${today()}">
+  <div class="mu" style="margin-bottom:8px">Each month runs from the start date (e.g. 15/10 to 15/11). The student must pay within that month. Record the payment when he pays.</div><div class="g2"><button onclick="sCreate()">Save</button><button class="g" onclick="$('#form').innerHTML=''">Cancel</button></div></div>`;
+}
+function sCreate(){
+  const name=$("#n").value.trim();if(!name)return alert("Enter the student name");
+  save("students",{id:uid(),name,phone:$("#ph").value,grade:+$("#gr").value,startDate:$("#d").value,fee:+$("#f").value||0,payments:[],exams:[]});
+}
+function studentFile(s){
+  const p=paidOf(s),r=(+s.fee||0)-p,[t,c]=status(s),ex=s.exams||[];
+  const gx=ex.filter(e=>e.score!==""&&e.score!=null),avg=gx.length?Math.round(gx.reduce((a,e)=>a+(+e.score/(+e.max||100)),0)/gx.length*100):null;
+  return `<button class="g" onclick="cur=null;render()">← Back</button>
+  <h1 style="margin-top:12px">${esc(s.name)} <span class="${c}" style="font-size:14px">● ${t}</span></h1>
+  <div class="card"><div class="mu">Grade ${esc(s.grade)} · 📞 ${esc(s.phone||"-")}</div><div class="mu">Start date: ${esc(s.startDate||"-")} · Monthly fee ${fmt(s.fee)}</div><button class="g" style="margin-top:8px" onclick="ed=ed==='${s.id}'?null:'${s.id}';render()">Edit student</button>${ed===s.id?editS(s):''}</div>
+  <div class="stats"><div class="stat"><b>${fmt(s.fee)}</b><span>Monthly fee</span></div><div class="stat"><b class="ok">${fmt(p)}</b><span>Total paid</span></div>
+  <div class="stat"><b class="${c}" style="font-size:15px">${esc(nextDue(s)||"-")}</b><span>Pay by</span></div></div>
+  <div class="card row"><span>This month</span><b>${isOpen(s)?fmt(partialOf(s))+" / "+fmt(s.fee)+" paid \u00b7 "+fmt((+s.fee)-partialOf(s))+" left":"Fully paid \u2713"}</b></div>
+  ${attCard(s)}<h2>💰 Payments</h2>${pePanel('students',s,'payments')}<div class="card t"><table>${(s.payments||[]).map((x,i)=>`<tr><td>${esc(x.date)}</td><td>${fmt(x.amount)}</td><td><button class="g" style="padding:4px 8px" onclick="pEdit('students','${s.id}','payments',${i})">✎</button><button class="d" onclick="delItem('students','${s.id}','payments',${i})">✕</button></td></tr>`).join("")||'<tr><td class="mu">No payments yet</td></tr>'}</table>
+  <div class="g2" style="margin-top:8px"><input id="pd" type="date" value="${today()}"><input id="pa" type="number" inputmode="decimal" placeholder="Amount $ (smaller = partial)" value="${isOpen(s)?(+s.fee)-partialOf(s):(s.fee||'')}"></div>
+  <button onclick="addP('${s.id}')">+ Add payment</button></div>
+  <h2>📝 Exams & grades ${avg!==null?`<span class="mu">(average ${avg}%)</span>`:""}</h2>
+  <div class="card t"><table>${ex.map((x,i)=>`<tr><td>${esc(x.name)}<div class="mu">${esc(x.date)}</div></td><td><b>${x.score===""||x.score==null?'<span class="wa">Not graded</span>':esc(x.score)+'/'+esc(x.max)}</b></td><td><button class="d" onclick="delItem('students','${s.id}','exams',${i})">✕</button></td></tr>`).join("")||'<tr><td class="mu">No exams yet</td></tr>'}</table>
+  <input id="en" placeholder="Exam name" style="margin-top:8px"><div class="g2"><input id="ed" type="date" value="${today()}"><input id="es" type="number" inputmode="decimal" placeholder="Score"></div>
+  <input id="em" type="number" inputmode="decimal" placeholder="Maximum score" value="100"><button onclick="addE('${s.id}')">+ Add exam</button></div>
+  <button class="d" style="margin:12px 0" onclick="remove('students','${s.id}')">Delete student</button>`;
+}
+function addP(id){const s=D.students.find(x=>x.id===id),a=+$("#pa").value;if(!a)return;save("students",{...s,payments:[...(s.payments||[]),{date:$("#pd").value,amount:a}]})}
+function addE(id){const s=D.students.find(x=>x.id===id),n=$("#en").value.trim(),sc=$("#es").value;if(!n||sc==="")return alert("Enter exam name and score");
+  save("students",{...s,exams:[...(s.exams||[]),{name:n,date:$("#ed").value,score:+sc,max:+$("#em").value||100}]})}
+function delItem(k,id,f,i){const o=D[k].find(x=>x.id===id);if(!sure(f+id+i))return;const a=[...(o[f]||[])];a.splice(i,1);save(k,{...o,[f]:a})}
+
+/* ---------- Teachers ---------- */
+function monthPaid(t,m){return sum(t.payments,"amount",x=>(x.forMonth||(x.date||"").slice(0,7))===m)}
+const tDueDay=t=>+t.dueDay||(t.startDate?+t.startDate.slice(8,10):1)||1;
+const tDue=t=>addM(mon()+"-"+String(tDueDay(t)).padStart(2,"0"),0);
+const tStatus=t=>{if(!(+t.salary>0))return["No salary set","mu"];if(monthPaid(t,mon())>=+t.salary)return["Paid this month","ok"];if(t.startDate&&today()<t.startDate)return["Starts "+t.startDate,"mu"];const d=Math.round((Date.parse(tDue(t))-Date.parse(today()))/864e5);if(d<0)return["Overdue "+(-d)+"d","bad"];if(d===0)return["Due today","wa"];if(d<=3)return["Due in "+d+"d","wa"];return["Pending \u00b7 due "+tDue(t),"mu"]};
+function teachers(){
+  const t=D.teachers.find(x=>x.id===cur);if(t)return teacherFile(t);
+  const due=D.teachers.reduce((a,t)=>a+Math.max((+t.salary||0)-monthPaid(t,mon()),0),0);
+  return `<div class="stats"><div class="stat"><b>${D.teachers.length}</b><span>Teachers</span></div>
+  <div class="stat"><b>${fmt(sum(D.teachers,"salary"))}</b><span>Monthly salaries</span></div>
+  <div class="stat"><b class="${due?'bad':'ok'}">${fmt(due)}</b><span>Due this month</span></div></div>
+  <select onchange="ts=this.value;render()"><option value="name" ${ts==='name'?'selected':''}>Sort: A → Z</option><option value="paid" ${ts==='paid'?'selected':''}>Sort: Paid first</option><option value="unpaid" ${ts==='unpaid'?'selected':''}>Sort: Unpaid first</option></select>
+  <button onclick="tForm()" style="width:100%;margin-bottom:10px">+ New teacher</button><div id="form"></div>
+  ${tSorted().map(t=>{const [st,sc]=tStatus(t);return `<div class="card s" onclick="cur='${t.id}';render();scrollTo(0,0)"><div class="row"><b>${esc(t.name)}</b><span class="${sc}">${st}</span></div>
+  <div class="mu">${esc(t.subject||"")} · Salary ${fmt(t.salary)}/month</div><div class="mu">Started ${esc(t.startDate||"-")} · Salary due ${tDue(t)}</div><button class="${tStatus(t)[1]==='ok'?'g':''}" style="margin-top:8px;width:100%" onclick="event.stopPropagation();tMark('${t.id}')">${tStatus(t)[1]==='ok'?'Mark unpaid':'✓ Mark paid'}</button></div>`}).join("")||'<p class="mu" style="text-align:center">No teachers yet</p>'}`;
+}
+function tForm(){
+  $("#form").innerHTML=`<div class="card"><input id="n" placeholder="Teacher name"><input id="ph" placeholder="Phone" inputmode="tel">
+  <div class="g2"><input id="sb" placeholder="Subject"><input id="sl" type="number" inputmode="decimal" placeholder="Monthly salary ($)"></div>
+  <div class="mu">Start date</div><input id="d" type="date" value="${today()}">
+  <input id="dd" type="number" min="1" max="31" inputmode="numeric" placeholder="Payment due day each month (1-31)"><div class="g2"><button onclick="tCreate()">Save</button><button class="g" onclick="$('#form').innerHTML=''">Cancel</button></div></div>`;
+}
+function tCreate(){const name=$("#n").value.trim();if(!name)return alert("Enter the teacher name");
+  save("teachers",{id:uid(),name,phone:$("#ph").value,subject:$("#sb").value,salary:+$("#sl").value||0,startDate:$("#d").value,dueDay:+$("#dd").value||0,payments:[]})}
+function teacherFile(t){
+  const m=mon(),mp=monthPaid(t,m),rem=(+t.salary||0)-mp;
+  return `<button class="g" onclick="cur=null;render()">← Back</button><h1 style="margin-top:12px">${esc(t.name)}</h1>
+  <div class="card"><div class="mu">${esc(t.subject||"-")} · 📞 ${esc(t.phone||"-")}</div><div class="mu">Started: ${esc(t.startDate||"-")}</div><div class="mu">Salary due: <b class="${tStatus(t)[1]}">${tDue(t)}</b> (day ${tDueDay(t)} of each month) · ${tStatus(t)[0]}</div>
+  <div class="g2" style="margin-top:8px"><input id="ddd" type="number" min="1" max="31" inputmode="numeric" placeholder="Change due day (1-31)" style="margin:0"><button class="g" onclick="setDue('${t.id}')">Update</button></div><div class="g2" style="margin-top:8px"><button onclick="tMark('${t.id}')">${tStatus(t)[1]==='ok'?'Mark unpaid':'✓ Mark paid this month'}</button><button class="g" onclick="ed=ed==='${t.id}'?null:'${t.id}';render()">Edit teacher</button></div>${ed===t.id?editT(t):''}</div>
+  <div class="stats"><div class="stat"><b>${fmt(t.salary)}</b><span>Salary / month</span></div><div class="stat"><b class="ok">${fmt(mp)}</b><span>Paid (${m})</span></div>
+  <div class="stat"><b class="${rem>0?'bad':'ok'}">${fmt(Math.max(rem,0))}</b><span>Due</span></div></div>
+  <h2>💵 Salary payments</h2>${pePanel('teachers',t,'payments')}<div class="card t"><table>${(t.payments||[]).slice().map((x,i)=>`<tr><td>${esc(x.date)}</td><td>${fmt(x.amount)}</td><td class="mu">for ${esc(x.forMonth||(x.date||"").slice(0,7))} ${esc(x.note||"")}</td><td><button class="g" style="padding:4px 8px" onclick="pEdit('teachers','${t.id}','payments',${i})">✎</button><button class="d" onclick="delItem('teachers','${t.id}','payments',${i})">✕</button></td></tr>`).join("")||'<tr><td class="mu">No payments yet</td></tr>'}</table>
+  <div class="g2" style="margin-top:8px"><input id="pd" type="date" value="${today()}"><input id="pa" type="number" inputmode="decimal" placeholder="Amount ($)" value="${rem>0?rem:''}"></div>
+  <div class="mu">Salary for month</div><input id="pm" type="month" value="${mon()}"><input id="pn" placeholder="Note (optional)"><button onclick="tPay('${t.id}')">+ Record salary payment</button></div>
+  <button class="d" style="margin:12px 0" onclick="remove('teachers','${t.id}')">Delete teacher</button>`;
+}
+function tSorted(){return D.teachers.filter(t=>!tfl||(tfl==="paid")===(tStatus(t)[1]==="ok")).sort((a,b)=>{const nm=(a.name||"").localeCompare(b.name||""),u=(tStatus(b)[1]==="ok"?0:1)-(tStatus(a)[1]==="ok"?0:1);return ts==="unpaid"?(u||nm):ts==="paid"?(-u||nm):nm})}
+function tMark(id){const t=D.teachers.find(x=>x.id===id),m=mon();
+  if(tStatus(t)[1]==="ok"){if(!sure("u"+id))return;save("teachers",{...t,payments:(t.payments||[]).filter(p=>(p.forMonth||(p.date||"").slice(0,7))!==m)});return}
+  const rem=(+t.salary||0)-monthPaid(t,m);if(rem<=0)return toast("Set the salary first");
+  save("teachers",{...t,payments:[...(t.payments||[]),{date:today(),amount:rem,forMonth:m,note:"Marked paid"}]})}
+function editT(t){return `<div style="margin-top:10px"><input id="ten" value="${esc(t.name)}" placeholder="Name"><input id="tep" value="${esc(t.phone||'')}" placeholder="Phone"><div class="g2"><input id="tes" value="${esc(t.subject||'')}" placeholder="Subject"><input id="tel" type="number" inputmode="decimal" value="${t.salary||''}" placeholder="Monthly salary ($)"></div><div class="g2"><input id="ted" type="date" value="${esc(t.startDate||'')}"><input id="ted2" type="number" min="1" max="31" inputmode="numeric" value="${t.dueDay||''}" placeholder="Due day"></div><button onclick="saveT('${t.id}')" style="width:100%">Save changes</button></div>`}
+function saveT(id){const t=D.teachers.find(x=>x.id===id),n=$("#ten").value.trim();if(!n)return toast("Name is required");ed=null;save("teachers",{...t,name:n,phone:$("#tep").value,subject:$("#tes").value,salary:+$("#tel").value||0,startDate:$("#ted").value,dueDay:+$("#ted2").value||0})}
+function editS(s){return `<div style="margin-top:10px"><input id="sen" value="${esc(s.name)}" placeholder="Name"><input id="sep" value="${esc(s.phone||'')}" placeholder="Phone" inputmode="tel"><div class="g2"><select id="seg">${GR.map(g=>`<option value="${g}" ${s.grade==g?'selected':''}>Grade ${g}</option>`).join("")}</select><input id="sef" type="number" inputmode="decimal" value="${s.fee||''}" placeholder="Monthly fee ($)"></div><div class="mu">Start date</div><input id="sed" type="date" value="${esc(s.startDate||'')}"><button onclick="saveS('${s.id}')" style="width:100%">Save changes</button></div>`}
+function saveS(id){const s=D.students.find(x=>x.id===id),n=$("#sen").value.trim();if(!n)return toast("Name is required");ed=null;save("students",{...s,name:n,phone:$("#sep").value,grade:+$("#seg").value,startDate:$("#sed").value,fee:+$("#sef").value||0})}
+function pePanel(k,o,f){if(!pe||pe.k!==k||pe.id!==o.id||pe.f!==f)return"";const x=(o[f]||[])[pe.i];if(!x)return"";return `<div class="card"><div class="mu" style="margin-bottom:6px">Edit payment</div><div class="g2"><input id="pe1" type="date" value="${esc(x.date)}"><input id="pe2" type="number" inputmode="decimal" value="${x.amount}"></div>${k==='teachers'?`<div class="mu">Salary for month</div><input id="pe3" type="month" value="${esc(x.forMonth||(x.date||'').slice(0,7))}">`:''}<div class="g2"><button onclick="peSave()">Save changes</button><button class="g" onclick="pe=null;render()">Cancel</button></div></div>`}
+function pEdit(k,id,f,i){pe={k,id,f,i};render();const e=$("#pe1");if(e)e.scrollIntoView({block:"center"})}
+function peSave(){const {k,id,f,i}=pe,o=D[k].find(x=>x.id===id),a=[...(o[f]||[])],nx={...a[i],date:$("#pe1").value,amount:+$("#pe2").value||0};if(k==="teachers")nx.forMonth=$("#pe3").value;a[i]=nx;pe=null;save(k,{...o,[f]:a})}
+function setDue(id){const t=D.teachers.find(x=>x.id===id),v=+$("#ddd").value;if(v<1||v>31)return alert("Enter a day from 1 to 31");save("teachers",{...t,dueDay:v})}
+function tPay(id){const t=D.teachers.find(x=>x.id===id),a=+$("#pa").value;if(!a)return;save("teachers",{...t,payments:[...(t.payments||[]),{date:$("#pd").value,amount:a,forMonth:$("#pm").value||mon(),note:$("#pn").value}]})}
+
+/* ---------- Expenses ---------- */
+const CATS0=["Rent","Electricity","Water","Internet","Supplies","Maintenance"];
+const allCats=()=>[...CATS0,...D.categories.map(c=>c.name),"Other"];
+const BM=()=>bm||mon();
+const bStatus=(b,m=mon())=>{const due=addM(m+"-"+String(+b.dueDay||1).padStart(2,"0"),1);const pd=D.expenses.filter(e=>e.billId===b.id&&(e.forMonth||(e.date||"").slice(0,7))===m);if(pd.length)return{t:"Paid "+fmt(sum(pd,"amount")),c:"ok",due};const d=Math.round((Date.parse(due)-Date.parse(today()))/864e5);if(d<0)return{t:"Overdue "+(-d)+"d",c:"bad",due};if(d===0)return{t:"Due today",c:"wa",due};if(d<=3)return{t:"Due in "+d+"d",c:"wa",due};return{t:"Pending \u00b7 due "+due,c:"mu",due}};
+function billsView(){
+  const l=D.bills.slice().sort((a,b)=>(+a.dueDay||1)-(+b.dueDay||1));
+  return `<h2>🧾 Monthly bills</h2><div class="row" style="margin-bottom:8px"><button class="g" onclick="bMon(-1)">‹</button><b>For month: ${BM()}</b><button class="g" onclick="bMon(1)">›</button></div><div class="mu" style="margin-bottom:8px">A month's bills are due after that month ends (default: the 1st of the next month).</div>`+(l.map(b=>{const st=bStatus(b,BM()),o=bf&&bf.id===b.id;
+  return `<div class="card"><div class="row"><b>${esc(b.name)}</b><span class="${st.c}">${st.t}</span></div><div class="mu">${+b.amount?fmt(b.amount)+' expected':'Amount varies'} · ${esc(b.kind||'')} · due ${st.due}</div>
+  <div class="g2" style="margin-top:8px"><button onclick="bOpen('${b.id}','pay')">Pay</button><button class="g" onclick="bOpen('${b.id}','edit')">Edit</button></div>${o?(bf.mode==='pay'?`<div style="margin-top:8px"><div class="g2"><input id="bpd" type="date" value="${today()}"><input id="bpa" type="number" inputmode="decimal" placeholder="Amount paid ($)" value="${b.amount||''}"></div><button onclick="bPay('${b.id}')" style="width:100%">Record payment</button></div>`:`<div style="margin-top:8px"><div class="g2"><input id="bea" type="number" inputmode="decimal" placeholder="Expected amount ($, empty = varies)" value="${b.amount||''}"><input id="bed" type="number" min="1" max="31" inputmode="numeric" placeholder="Due day" value="${b.dueDay||1}"></div><div class="g2"><button onclick="bSave('${b.id}')">Save</button><button class="d" onclick="remove('bills','${b.id}')">Delete bill</button></div></div>`):''}</div>`}).join("")||'<p class="mu">No bills yet</p>')+
+  `<div class="card"><div class="mu" style="margin-bottom:6px">Add a bill: expense type, bill type, expected amount</div><select id="bn">${allCats().map(c=>`<option>${esc(c)}</option>`).join("")}</select><select id="bk"><option>Fixed amount</option><option>Varies each month</option></select><div class="g2"><input id="bna" type="number" inputmode="decimal" placeholder="Expected amount ($, optional)"><input id="bnd" type="number" min="1" max="31" inputmode="numeric" placeholder="Due day (empty = 1st)"></div><button onclick="bNew()" style="width:100%">+ Add bill</button></div>`;
+}
+function bMon(n){bm=addM(BM()+"-01",n).slice(0,7);bf=null;render()}
+function bOpen(id,mode){bf=bf&&bf.id===id&&bf.mode===mode?null:{id,mode};render()}
+function bPay(id){const b=D.bills.find(x=>x.id===id),a=+$("#bpa").value;if(!a)return toast("Enter the amount you paid");bf=null;save("expenses",{id:uid(),billId:id,forMonth:BM(),category:b.name,amount:a,date:$("#bpd").value||today(),note:""});toast("Payment recorded")}
+function bSave(id){const b=D.bills.find(x=>x.id===id);bf=null;save("bills",{...b,amount:+$("#bea").value||0,dueDay:Math.min(31,Math.max(1,+$("#bed").value||1))})}
+function bNew(){const n=$("#bn").value.trim();if(!n)return toast("Choose the expense type");save("bills",{id:uid(),name:n,kind:$("#bk").value,amount:+$("#bna").value||0,dueDay:Math.min(31,Math.max(1,+$("#bnd").value||1))})}
+function addCat(){const n=$("#nc").value.trim();if(!n)return;if(allCats().some(c=>c.toLowerCase()===n.toLowerCase()))return alert("This type already exists");save("categories",{id:uid(),name:n})}
+function expenses(){
+  const m=mon(),tm=sum(D.expenses,"amount",x=>expM(x)===m);
+  const l=D.expenses.slice().sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+  return `<div class="stats"><div class="stat"><b>${fmt(tm)}</b><span>This month</span></div><div class="stat"><b>${fmt(sum(D.expenses,"amount"))}</b><span>All time</span></div><div class="stat"><b>${D.expenses.length}</b><span>Records</span></div></div>${billsView()}<h2>🛒 One-time expenses</h2>
+  <div class="card"><div class="g2"><select id="ec">${allCats().map(c=>`<option>${esc(c)}</option>`).join("")}</select><input id="ea" type="number" inputmode="decimal" placeholder="Amount ($)"></div>
+  <div class="g2"><input id="ed" type="date" value="${today()}"><input id="eno" placeholder="Note (optional)"></div><button onclick="eAdd()" style="width:100%">+ Add expense</button>
+  <div class="g2" style="margin-top:12px"><input id="nc" placeholder="New expense type" style="margin:0"><button class="g" onclick="addCat()">+ Add type</button></div>
+  <div style="margin-top:6px">${D.categories.map(c=>`<span class="mu" style="margin-inline-end:8px">${esc(c.name)}<button class="d" onclick="remove('categories','${c.id}')">✕</button></span>`).join("")}</div></div>
+  <div class="card t"><table>${l.map(x=>`<tr><td>${esc(x.date)}</td><td><b>${esc(x.category)}</b><div class="mu">${esc(x.note||"")}</div></td><td>${fmt(x.amount)}</td><td><button class="d" onclick="remove('expenses','${x.id}')">✕</button></td></tr>`).join("")||'<tr><td class="mu">No expenses yet</td></tr>'}</table></div>`;
+}
+function eAdd(){const a=+$("#ea").value;if(!a)return alert("Enter the amount");save("expenses",{id:uid(),category:$("#ec").value,amount:a,date:$("#ed").value,note:$("#eno").value})}
+
+/* ---------- Attendance ---------- */
+let ad="",aq="",af="all",aso="grade",hf="all",ho="new";const AD=()=>ad||today();
+const marksOf=d=>((D.attendance||[]).find(x=>x.id===d)||{}).marks||{};
+const AL={p:["Present","--ok"],l:["Late","--wa"],a:["Absent","--bad"]};
+function attendance(){
+  const d=AD(),m=marksOf(d),l=D.students.slice().sort((a,b)=>{const tm=(a.time||"99:99").localeCompare(b.time||"99:99"),g=(+a.grade||0)-(+b.grade||0),nm=(a.name||"").localeCompare(b.name||""),r=x=>aso==="u"?(m[x.id]?1:0):(m[x.id]===aso?0:1);return aso==="name"?nm:aso==="grade"?(g||nm):(r(a)-r(b)||g||nm)});
+  const c=k=>l.filter(s=>m[s.id]===k).length,un=l.filter(s=>!m[s.id]).length;
+  return `<div class="row" style="margin-bottom:8px"><button class="g" onclick="aDay(-1)">‹</button><input type="date" value="${d}" onchange="ad=this.value;render()" style="margin:0;text-align:center"><button class="g" onclick="aDay(1)">›</button></div>
+  ${d!==today()?'<button class="g" style="width:100%;margin-bottom:8px" onclick="ad=\'\';render()">Back to today</button>':''}
+  <div class="stats" style="grid-template-columns:repeat(5,1fr);gap:6px">${[["all","All",l.length,""],["p","Present",c('p'),"ok"],["l","Late",c('l'),"wa"],["a","Absent",c('a'),"bad"],["u","Not marked",un,""]].map(([k,t,n,cl])=>`<div class="stat s" style="${af===k?'border:2px solid var(--pr);':''}padding:8px 2px" onclick="af='${k}';render()"><b class="${cl}">${n}</b><span>${t}</span></div>`).join("")}</div>
+  <input id="aqi" placeholder="Search name or phone" value="${esc(aq)}" oninput="aq=this.value;render();const e=$('#aqi');e.focus();e.setSelectionRange(e.value.length,e.value.length)"><select style="display:none" onchange="aso=this.value;render()"><option value="grade" ${aso==='grade'?'selected':''}>Sort: By grade</option><option value="name" ${aso==='name'?'selected':''}>Sort: A → Z</option><option value="p" ${aso==='p'?'selected':''}>Sort: Present first</option><option value="a" ${aso==='a'?'selected':''}>Sort: Absent first</option><option value="l" ${aso==='l'?'selected':''}>Sort: Late first</option><option value="u" ${aso==='u'?'selected':''}>Sort: Not marked first</option></select><div class="mu" style="margin-bottom:8px">Each tap saves automatically for ${d}. Tap again to clear.</div><datalist id="rsn"><option value="Sick"><option value="Travel"><option value="Family reason"><option value="Exam at school"><option value="No reason given"></datalist>`+
+  (l.filter(s=>(af==="all"||(af==="u"?!m[s.id]:m[s.id]===af))&&((s.name||"")+(s.phone||"")).toLowerCase().includes(aq.toLowerCase())).map(s=>`<div class="card"><div class="row"><b>${esc(s.name)}</b><span class="mu">Grade ${esc(s.grade)}</span></div>${timesOf(d)[s.id]?'<div class="mu" style="margin-top:6px">⏰ Arrived '+timesOf(d)[s.id]+'</div>':(m[s.id]&&m[s.id]!=="a"&&d===today()?'<div class="mu" style="margin-top:6px">⏰ No time yet — tap the same button once to record it</div>':'')}<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px">${Object.keys(AL).map(k=>`<button class="${m[s.id]===k?'':'g'}" style="${m[s.id]===k?'background:var('+AL[k][1]+');color:#fff;':''}padding:10px 4px" onclick="aMark('${s.id}','${k}')">${AL[k][0]}</button>`).join("")}</div>${m[s.id]==="a"?`<input placeholder="Reason for absence" list="rsn" value="${esc(notesOf(d)[s.id]||'')}" onchange="aNote('${s.id}',this.value)" style="margin:8px 0 0">`:''}</div>`).join("")||'<p class="mu" style="text-align:center">No students here</p>');
+}
+function aDay(n){ad=new Date(Date.parse(AD())+n*864e5).toISOString().slice(0,10);render()}
+const timesOf=d=>((D.attendance||[]).find(x=>x.id===d)||{}).times||{};const nowT=()=>new Date().toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"});const notesOf=d=>((D.attendance||[]).find(x=>x.id===d)||{}).notes||{};
+function aNote(sid,v){const d=AD();save("attendance",{id:d,marks:{...marksOf(d)},times:{...timesOf(d)},notes:{...notesOf(d),[sid]:v.trim()}})}
+function aMark(sid,v){const d=AD(),m={...marksOf(d)},t={...timesOf(d)},n={...notesOf(d)};if(m[sid]===v&&!(v!=="a"&&!t[sid]&&d===today())){delete m[sid];delete t[sid];delete n[sid]}else{m[sid]=v;if(v!=="a")delete n[sid];if(v==="a"||d!==today())delete t[sid];else t[sid]=nowT()}save("attendance",{id:d,marks:m,times:t,notes:n})}
+function aHist(id){return (D.attendance||[]).filter(x=>x.marks&&x.marks[id]).map(x=>({d:x.id,v:x.marks[id],t:(x.times||{})[id],n:(x.notes||{})[id]})).sort((a,b)=>b.d.localeCompare(a.d))}
+function attCard(s){const h=aHist(s.id),n=k=>h.filter(x=>x.v===k).length,fh=h.filter(x=>hf==="all"||x.v===hf).sort((a,b)=>ho==="old"?a.d.localeCompare(b.d):b.d.localeCompare(a.d));
+  return `<h2>🗓️ Attendance</h2><div class="stats"><div class="stat"><b class="ok">${n('p')}</b><span>Present</span></div><div class="stat"><b class="wa">${n('l')}</b><span>Late</span></div><div class="stat"><b class="bad">${n('a')}</b><span>Absent</span></div></div><div class="g2"><select onchange="ho=this.value;render()"><option value="new" ${ho==='new'?'selected':''}>Date: Newest first</option><option value="old" ${ho==='old'?'selected':''}>Date: Oldest first</option></select><select onchange="hf=this.value;render()"><option value="all" ${hf==='all'?'selected':''}>Show: All</option><option value="p" ${hf==='p'?'selected':''}>Show: Present</option><option value="a" ${hf==='a'?'selected':''}>Show: Absent</option><option value="l" ${hf==='l'?'selected':''}>Show: Late</option></select></div><div class="card t"><table>${fh.slice(0,31).map(x=>`<tr><td>${x.d}</td><td class="${x.v==='p'?'ok':x.v==='l'?'wa':'bad'}">${AL[x.v][0]}</td><td class="mu">${esc(x.v==='a'?(x.n||''):(x.t||''))}</td></tr>`).join("")||'<tr><td class="mu">No attendance yet</td></tr>'}</table>${fh.length>31?'<div class="mu">Showing 31 of '+fh.length+' days</div>':''}</div>`}
+
+/* ---------- Exams page ---------- */
+let xf="all",xq="",xa=false,ee=null;
+const hasS=x=>x.score!==""&&x.score!=null&&!isNaN(x.score);
+function examsPage(){
+  const all=D.students.flatMap(s=>(s.exams||[]).map((x,i)=>({s,x,i}))).sort((a,b)=>(b.x.date||"").localeCompare(a.x.date||"")),ng=all.filter(e=>!hasS(e.x)).length;
+  const l=all.filter(e=>(xf==="all"||(xf==="ng")===!hasS(e.x))&&((e.s.name||"")+" "+(e.x.name||"")).toLowerCase().includes(xq.toLowerCase()));
+  const sts=D.students.slice().sort((a,b)=>(a.name||"").localeCompare(b.name||""));
+  return `<div class="stats">${[["all","All",all.length,""],["ng","Not graded",ng,"wa"],["g","Graded",all.length-ng,"ok"]].map(([k,t,n,cl])=>`<div class="stat s" style="${xf===k?'border:2px solid var(--pr);':''}" onclick="xf='${k}';render()"><b class="${cl}">${n}</b><span>${t}</span></div>`).join("")}</div>
+  <button onclick="xa=!xa;render()" style="width:100%;margin-bottom:10px">+ New exam</button>
+  ${xa?`<div class="card"><select id="xs">${sts.map(s=>`<option value="${s.id}">${esc(s.name)} (Grade ${esc(s.grade)})</option>`).join("")}</select><input id="xn" placeholder="Subject"><div class="g2"><input id="xd" type="date" value="${today()}"><input id="xm" type="number" inputmode="decimal" placeholder="Out of" value="100"></div><input id="xg" type="number" inputmode="decimal" placeholder="Grade (leave empty to add later)"><div class="g2"><button onclick="xAdd()">Save</button><button class="g" onclick="xa=false;render()">Cancel</button></div></div>`:''}
+  <input id="xqi" placeholder="Search student or subject" value="${esc(xq)}" oninput="xq=this.value;render();const e=$('#xqi');e.focus();e.setSelectionRange(e.value.length,e.value.length)">`+
+  (l.map(({s,x,i})=>{const k=s.id+"|"+i,id=s.id+"_"+i;return `<div class="card"><div class="row"><div><b>${esc(s.name)}</b><div class="mu">${esc(x.name)} · ${esc(x.date)} · Grade ${esc(s.grade)}</div></div><button class="d" onclick="delItem('students','${s.id}','exams',${i})">✕</button></div>${hasS(x)&&ee!==k?`<div class="row" style="margin-top:8px"><b>${esc(x.score)}/${esc(x.max)}</b><button class="g" onclick="ee='${k}';render()">Edit grade</button></div>`:`<div class="g2" style="margin-top:8px"><input id="xg_${id}" type="number" inputmode="decimal" placeholder="Grade (out of ${esc(x.max)})" value="${hasS(x)?esc(x.score):''}" style="margin:0"><button onclick="xSet('${s.id}',${i})">Save grade</button></div>`}</div>`}).join("")||'<p class="mu" style="text-align:center">No exams yet</p>');
+}
+function xAdd(){const s=D.students.find(x=>x.id===$("#xs").value),n=$("#xn").value.trim();if(!s)return toast("Choose a student");if(!n)return toast("Enter the subject");const g=$("#xg").value;xa=false;save("students",{...s,exams:[...(s.exams||[]),{name:n,date:$("#xd").value||today(),score:g===""?"":+g,max:+$("#xm").value||100}]})}
+function xSet(id,i){const s=D.students.find(x=>x.id===id),v=$("#xg_"+id+"_"+i).value;if(v==="")return toast("Enter the grade");const a=[...(s.exams||[])];a[i]={...a[i],score:+v};ee=null;save("students",{...s,exams:a})}
+
+/* ---------- Simple payments page ---------- */
+let pf="all";
+const isPaid=s=>status(s)[1]==="ok",hasFee=s=>s.startDate&&+s.fee>0;
+function payPage(){
+  const all=D.students.slice().sort((a,b)=>(+a.grade||0)-(+b.grade||0)||(a.name||"").localeCompare(b.name||"")),np=all.filter(s=>hasFee(s)&&!isPaid(s)).length,pd=all.filter(s=>hasFee(s)&&isPaid(s)).length;
+  const l=all.filter(s=>pf==="all"||(hasFee(s)&&(pf==="paid")===isPaid(s)));
+  return `<div class="stats">${[["all","All",all.length,""],["paid","Paid",pd,"ok"],["unpaid","Not paid",np,"bad"]].map(([k,t,n,cl])=>`<div class="stat s" style="${pf===k?'border:2px solid var(--pr);':''}" onclick="pf='${k}';render()"><b class="${cl}">${n}</b><span>${t}</span></div>`).join("")}</div>
+  `+
+  (l.map(s=>{const f=hasFee(s),p=f&&isPaid(s);return `<div class="card"><div class="row"><div><b>${esc(s.name)}</b><div class="mu">Grade ${esc(s.grade)} · ${fmt(s.fee)}/month</div></div>${f?`<button class="${p?'g':''}" style="${p?'color:var(--ok);border-color:var(--ok)':'background:var(--bad)'};min-width:96px" onclick="pMark('${s.id}')">${p?'✓ Paid':'Not paid'}</button>`:'<span class="mu">No fee set</span>'}</div></div>`}).join("")||'<p class="mu" style="text-align:center">No students</p>')+'<div class="mu">Tap "Not paid" to mark the month as paid. Tap "Paid" to undo the last payment.</div>';
+}
+function pMark(id){const s=D.students.find(x=>x.id===id),a=s.payments||[];
+  if(isPaid(s)){if(!sure("pu"+id))return;save("students",{...s,payments:a.slice(0,-1)});return}
+  if(today()<s.startDate)return toast("This student has not started yet");
+  const rem=(+s.fee)-partialOf(s);if(rem<=0)return;
+  save("students",{...s,payments:[...a,{date:today(),amount:rem}]})}
+
+/* ---------- Summary ---------- */
+const expM=e=>e.forMonth||(e.date||"").slice(0,7);
+let sm="";const SM=()=>sm||mon();
+/* ---------- Overview ---------- */
+function overview(){
+  const m=mon(),inc=D.students.reduce((a,s)=>a+sum(s.payments,"amount",x=>(x.date||"").slice(0,7)===m),0);
+  const sal=D.teachers.reduce((a,t)=>a+monthPaid(t,m),0),ex=sum(D.expenses,"amount",x=>expM(x)===m);
+  const net=inc-sal-ex,eI=sum(D.students.filter(s=>(s.startDate||"").slice(0,7)<=m),"fee"),eS=sum(D.teachers.filter(t=>(t.startDate||"").slice(0,7)<=m),"salary"),eE=sum(D.bills,"amount")+sum(D.expenses.filter(x=>!x.billId&&expM(x)===m),"amount");
+  const unpaid=D.students.filter(s=>daysTo(s)!==null).sort((a,b)=>daysTo(a)-daysTo(b));
+  return `<h2 style="margin-top:0">This month (${m})</h2>
+  <div class="stats"><div class="stat"><b class="ok">${fmt(inc)}</b><span>Income<br>of ${fmt(eI)} expected</span></div><div class="stat"><b class="bad">${fmt(sal)}</b><span>Salaries<br>of ${fmt(eS)} due</span></div><div class="stat"><b class="bad">${fmt(ex)}</b><span>Expenses<br>of ${fmt(eE)} expected</span></div></div>
+  <div class="card"><div class="row"><b>Net so far</b><b class="${net>=0?'ok':'bad'}">${fmt(net)}</b></div><div class="row" style="margin-top:6px"><b>Expected net</b><b class="${eI-eS-eE>=0?'ok':'bad'}">${fmt(eI-eS-eE)}</b></div><div class="mu">Expected income − salaries − expenses</div></div>
+  <h2>🔔 Payments due (${unpaid.length})</h2><div class="mu" style="margin-bottom:6px">Not paid yet for the current month, soonest deadline first</div>
+  ${unpaid.map(s=>`<div class="card s" onclick="tab='students';cur='${s.id}';render()"><div class="row"><b>${esc(s.name)}</b><span class="${status(s)[1]}">${status(s)[0]}</span></div><div class="mu">Grade ${esc(s.grade)} · ${fmt(s.fee)} · pay by ${esc(nextDue(s))}</div></div>`).join("")||'<p class="mu">No payments due 🎉</p>'}
+  <h2>💵 Teacher salaries (${D.teachers.length})</h2>${D.teachers.map(t=>{const [st,sc]=tStatus(t);return `<div class="card s" onclick="tab='teachers';cur='${t.id}';render()"><div class="row"><b>${esc(t.name)}</b><span class="${sc}">${st}</span></div><div class="mu">Salary ${fmt(t.salary)} · due ${tDue(t)}</div></div>`}).join("")||'<p class="mu">No teachers yet</p>'}
+  <h2>🧾 Monthly bills</h2>${D.bills.slice().sort((a,b)=>(+a.dueDay||1)-(+b.dueDay||1)).map(b=>{const st=bStatus(b);return `<div class="card s" onclick="tab='expenses';render()"><div class="row"><b>${esc(b.name)}</b><span class="${st.c}">${st.t}</span></div><div class="mu">${+b.amount?fmt(b.amount)+' expected':'Amount varies'} · due ${st.due}</div></div>`}).join("")||'<p class="mu">No bills yet</p>'}`;
+}
+init();
+</script>
+</body>
+</html>
